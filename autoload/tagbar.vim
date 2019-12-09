@@ -982,29 +982,33 @@ function! s:ProcessFile(fname, ftype) abort
 
     call tagbar#debug#log('typeinfo for file to process: ' . string(typeinfo))
 
-    " Use a temporary files for ctags processing instead of the original one.
-    " This allows using Tagbar for files accessed with netrw, and also doesn't
-    " slow down Tagbar for files that sit on slow network drives.
-    let tempfile = tempname()
-    let ext = fnamemodify(fileinfo.fpath, ':e')
-    if ext !=# ''
-        let tempfile .= '.' . ext
+    if !exists('g:tagbar_no_tmp_file') || !g:tagbar_no_tmp_file
+        " Use a temporary files for ctags processing instead of the original one.
+        " This allows using Tagbar for files accessed with netrw, and also doesn't
+        " slow down Tagbar for files that sit on slow network drives.
+        let ctagsfile = tempname()
+        let ext = fnamemodify(fileinfo.fpath, ':e')
+        if ext !=# ''
+            let ctagsfile .= '.' . ext
+        endif
+
+        call tagbar#debug#log('Caching file into: ' . ctagsfile)
+        let templines = getbufline(fileinfo.bufnr, 1, '$')
+        let res = writefile(templines, ctagsfile)
+
+        if res != 0
+            call tagbar#debug#log('Could not create copy '.ctagsfile)
+            return
+        endif
+        let fileinfo.mtime = getftime(ctagsfile)
+    else
+        let ctagsfile = a:fname
     endif
 
-    call tagbar#debug#log('Caching file into: ' . tempfile)
-    let templines = getbufline(fileinfo.bufnr, 1, '$')
-    let res = writefile(templines, tempfile)
+    let ctags_output = s:ExecuteCtagsOnFile(ctagsfile, a:fname, typeinfo)
 
-    if res != 0
-        call tagbar#debug#log('Could not create copy '.tempfile)
-        return
-    endif
-    let fileinfo.mtime = getftime(tempfile)
-
-    let ctags_output = s:ExecuteCtagsOnFile(tempfile, a:fname, typeinfo)
-
-    if !tagbar#debug#enabled()
-        call delete(tempfile)
+    if !tagbar#debug#enabled() && (!exists('g:tagbar_no_tmp_file') || !g:tagbar_no_tmp_file)
+        call delete(ctagsfile)
     endif
 
     if ctags_output == -1
